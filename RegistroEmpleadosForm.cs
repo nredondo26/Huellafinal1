@@ -1,13 +1,10 @@
-﻿using MySql.Data.MySqlClient;
-using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
-using System.Linq;
-using System.Text;
+﻿using System;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using MySql.Data.MySqlClient;
+using DPFP;
+using DPFP.Capture;
+using System.IO;
 
 namespace Huella
 {
@@ -15,8 +12,11 @@ namespace Huella
     {
         private TextBox txtCedula, txtNombre, txtApellido;
         private Button btnCapturarHuella, btnRegistrar;
+        private ProgressBar progressBar;
+        private Label lblProgreso;
         private DPFP.Capture.Capture Capturer;
         private DPFP.Template HuellaTemplate;
+        private DPFP.Processing.Enrollment Enrollment;
 
         public RegistroEmpleadosForm()
         {
@@ -24,36 +24,53 @@ namespace Huella
             InitializeComponent2();
             Capturer = new DPFP.Capture.Capture();
             Capturer.EventHandler = this;
+            Enrollment = new DPFP.Processing.Enrollment();
         }
 
         private void InitializeComponent2()
         {
             this.Text = "Registro de Empleados";
-            this.Size = new System.Drawing.Size(350, 300);
+            this.Size = new System.Drawing.Size(400, 350);
 
             txtCedula = new TextBox { PlaceholderText = "Cédula", Left = 100, Top = 30, Width = 200 };
             txtNombre = new TextBox { PlaceholderText = "Nombre", Left = 100, Top = 70, Width = 200 };
             txtApellido = new TextBox { PlaceholderText = "Apellido", Left = 100, Top = 110, Width = 200 };
 
-            btnCapturarHuella = new Button { Text = "Capturar Huella", Left = 100, Top = 150, Width = 200 };
-            btnCapturarHuella.Click += new EventHandler(BtnCapturarHuella_Click);
+            btnCapturarHuella = new Button { Text = "Iniciar Captura", Left = 100, Top = 150, Width = 200 };
+            btnCapturarHuella.Click += new System.EventHandler(BtnCapturarHuella_Click);
 
-            btnRegistrar = new Button { Text = "Registrar Empleado", Left = 100, Top = 190, Width = 200 };
-            btnRegistrar.Click += new EventHandler(BtnRegistrar_Click);
+            progressBar = new ProgressBar { Left = 100, Top = 200, Width = 200, Height = 20, Minimum = 0, Maximum = 4 };
+            lblProgreso = new Label { Text = "Capturas: 0/4", Left = 100, Top = 230, Width = 200 };
+
+            btnRegistrar = new Button { Text = "Registrar Empleado", Left = 100, Top = 260, Width = 200, Enabled = false };
+            btnRegistrar.Click += new System.EventHandler(BtnRegistrar_Click);
 
             this.Controls.Add(txtCedula);
             this.Controls.Add(txtNombre);
             this.Controls.Add(txtApellido);
             this.Controls.Add(btnCapturarHuella);
+            this.Controls.Add(progressBar);
+            this.Controls.Add(lblProgreso);
             this.Controls.Add(btnRegistrar);
         }
 
+        private bool huellaCapturada = false; // ✅ Variable para evitar reinicio de captura
+
         private void BtnCapturarHuella_Click(object sender, EventArgs e)
         {
+            if (huellaCapturada)
+            {
+                MessageBox.Show("La huella ya ha sido capturada.");
+                return;
+            }
+
             try
             {
+                Enrollment.Clear();
+                progressBar.Value = 0;
+                lblProgreso.Text = "Capturas: 0/4";
                 Capturer.StartCapture();
-                MessageBox.Show("Coloque su dedo en el lector.");
+                MessageBox.Show("Coloque su dedo en el lector. La captura se realizará automáticamente.");
             }
             catch
             {
@@ -63,7 +80,6 @@ namespace Huella
 
         public void OnComplete(object Capture, string ReaderSerialNumber, DPFP.Sample Sample)
         {
-            // Convertir la muestra en una plantilla
             DPFP.Processing.FeatureExtraction extractor = new DPFP.Processing.FeatureExtraction();
             DPFP.FeatureSet features = new DPFP.FeatureSet();
             DPFP.Capture.CaptureFeedback feedback = DPFP.Capture.CaptureFeedback.None;
@@ -72,20 +88,45 @@ namespace Huella
 
             if (feedback == DPFP.Capture.CaptureFeedback.Good)
             {
-                DPFP.Processing.Enrollment enrollment = new DPFP.Processing.Enrollment();
-                enrollment.AddFeatures(features);
+                Enrollment.AddFeatures(features);
 
-                if (enrollment.TemplateStatus == DPFP.Processing.Enrollment.Status.Ready)
+                this.Invoke((MethodInvoker)delegate
                 {
-                    HuellaTemplate = enrollment.Template;
-                    MessageBox.Show("Huella capturada correctamente.");
-                    Capturer.StopCapture();
-                }
+                    int capturasRealizadas = (int)(Enrollment.FeaturesNeeded > 0 ? (5 - Enrollment.FeaturesNeeded) : 4);
+                    progressBar.Value = Math.Max(progressBar.Minimum, Math.Min(progressBar.Maximum, capturasRealizadas));
+                    lblProgreso.Text = $"Capturas: {capturasRealizadas}/4";
+
+                    if (Enrollment.TemplateStatus == DPFP.Processing.Enrollment.Status.Ready)
+                    {
+                        Capturer.StopCapture(); // ✅ DETIENE LA CAPTURA
+                        Capturer.EventHandler = null; // ✅ ELIMINA EVENTOS PARA EVITAR QUE SE VUELVA A EJECUTAR
+                        huellaCapturada = true; // ✅ EVITA QUE SE REINICIE LA CAPTURA
+
+                        HuellaTemplate = Enrollment.Template;
+                        lblProgreso.Text = "Huella capturada correctamente.";
+                        progressBar.Value = 4;
+                        btnRegistrar.Enabled = true;
+
+                        Task.Run(async () =>
+                        {
+                            MessageBox.Show("Huella capturada correctamente.");
+                            await Task.Delay(500);
+                            SendKeys.SendWait("{ENTER}"); // Cierra el MessageBox sin intervención del usuario
+                        });
+                    }
+                });
             }
-            else
+        }
+
+
+        private async void MostrarMensajeTemporal(string mensaje)
+        {
+            await Task.Run(() =>
             {
-                MessageBox.Show("Muestra de huella no válida. Intente nuevamente.");
-            }
+                MessageBox.Show(mensaje);
+                Task.Delay(2000).Wait(); // Espera 2 segundos antes de cerrar
+                SendKeys.SendWait("{ENTER}"); // Cierra el MessageBox automáticamente
+            });
         }
 
         public void OnFingerGone(object Capture, string ReaderSerialNumber) { }
@@ -102,36 +143,100 @@ namespace Huella
                 return;
             }
 
-            string cedula = txtCedula.Text;
-            string nombre = txtNombre.Text;
-            string apellido = txtApellido.Text;
+            string cedula = txtCedula.Text.Trim();
+            string nombre = txtNombre.Text.Trim();
+            string apellido = txtApellido.Text.Trim();
 
-            using (MemoryStream ms = new MemoryStream())
+            using (MySqlConnection conn = new DatabaseConnection().GetConnection())
             {
-                HuellaTemplate.Serialize(ms);
-                byte[] huellaData = ms.ToArray();
+                conn.Open();
 
-                using (MySqlConnection conn = new DatabaseConnection().GetConnection())
+                string checkQuery = "SELECT COUNT(*) FROM empleados WHERE cedula = @cedula";
+                MySqlCommand checkCmd = new MySqlCommand(checkQuery, conn);
+                checkCmd.Parameters.AddWithValue("@cedula", cedula);
+                int count = Convert.ToInt32(checkCmd.ExecuteScalar());
+
+                if (count > 0)
                 {
-                    conn.Open();
-                    string query = "INSERT INTO empleados (cedula, nombre, apellido, huella) VALUES (@cedula, @nombre, @apellido, @huella)";
-                    MySqlCommand cmd = new MySqlCommand(query, conn);
-                    cmd.Parameters.AddWithValue("@cedula", cedula);
-                    cmd.Parameters.AddWithValue("@nombre", nombre);
-                    cmd.Parameters.AddWithValue("@apellido", apellido);
-                    cmd.Parameters.AddWithValue("@huella", huellaData);
+                    MessageBox.Show("Error: La cédula ya está registrada.");
+                    return;
+                }
 
-                    int rows = cmd.ExecuteNonQuery();
-                    if (rows > 0)
+                string query = "INSERT INTO empleados (cedula, nombre, apellido, huella) VALUES (@cedula, @nombre, @apellido, @huella)";
+                MySqlCommand cmd = new MySqlCommand(query, conn);
+                cmd.Parameters.AddWithValue("@cedula", cedula);
+                cmd.Parameters.AddWithValue("@nombre", nombre);
+                cmd.Parameters.AddWithValue("@apellido", apellido);
+
+                using (MemoryStream ms = new MemoryStream())
+                {
+                    HuellaTemplate.Serialize(ms);
+                    byte[] huellaData = ms.ToArray();
+                    cmd.Parameters.AddWithValue("@huella", huellaData);
+                }
+
+                int rows = cmd.ExecuteNonQuery();
+                if (rows > 0)
+                {
+                    DialogResult respuesta = MessageBox.Show(
+                        "Empleado registrado exitosamente.\n¿Desea agregar otro empleado?",
+                        "Registro Exitoso",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Question
+                    );
+
+                    if (respuesta == DialogResult.Yes)
                     {
-                        MessageBox.Show("Empleado registrado exitosamente.");
+                        LimpiarCampos(); // ✅ Si elige "Sí", limpiamos y permitimos otro registro
                     }
                     else
                     {
-                        MessageBox.Show("Error al registrar empleado.");
+                        this.Close(); // ✅ Si elige "No", volvemos al menú principal
                     }
+                }
+                else
+                {
+                    MessageBox.Show("Error al registrar empleado.");
                 }
             }
         }
+
+
+        private void LimpiarCampos()
+        {
+            txtCedula.Text = "";
+            txtNombre.Text = "";
+            txtApellido.Text = "";
+            progressBar.Value = 0;
+            lblProgreso.Text = "Capturas: 0/4";
+            btnRegistrar.Enabled = false;
+            huellaCapturada = false; // ✅ Permite capturar una nueva huella
+            HuellaTemplate = null;   // ✅ Reseteamos la huella
+            Enrollment.Clear();      // ✅ Reinicia la captura de huellas
+            ReiniciarLector();       // ✅ Vuelve a habilitar el lector de huellas
+        }
+
+        private void ReiniciarLector()
+        {
+            try
+            {
+                if (Capturer != null)
+                {
+                    Capturer.StopCapture();
+                    Capturer.EventHandler = null;
+                    Capturer = new DPFP.Capture.Capture();
+                    Capturer.EventHandler = this;
+                    Capturer.StartCapture();
+                    MessageBox.Show("Lector de huellas listo para un nuevo registro.");
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Error al reiniciar el lector: " + ex.Message);
+            }
+        }
+
+
+
     }
 }

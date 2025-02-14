@@ -46,7 +46,7 @@ namespace Huella
                     MessageBox.Show("Bienvenido " + role);
                     if (role == "admin")
                     {
-                        new RegistroEmpleadosForm().Show();
+                        new MenuPrincipalForm().Show();
                         this.Hide();
                     }
                 }

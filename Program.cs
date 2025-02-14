@@ -8,10 +8,13 @@ namespace Huella
         [STAThread]
         static void Main()
         {
-            // To customize application configuration such as set high DPI settings or default font,
-            // see https://aka.ms/applicationconfiguration.
+            
             ApplicationConfiguration.Initialize();
             Application.Run(new LoginForm());
+            //Application.Run(new RegistroEmpleadosForm());
+             //Application.Run(new MenuPrincipalForm());
+            //Application.Run(new ModuloAsistenciaForm());
+            //Application.Run(new ModuloReportesForm());
         }
     }
 }

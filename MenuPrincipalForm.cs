@@ -1,16 +1,15 @@
-﻿using System;
-using System.Windows.Forms;
-using MySql.Data.MySqlClient;
+﻿using MySql.Data.MySqlClient;
 using DPFP.Capture;
-using System.Text.RegularExpressions;
-
+using System;
+using System.Windows.Forms;
+using Capture = DPFP.Capture.Capture;
 
 namespace Huella
 {
     public partial class MenuPrincipalForm : Form, DPFP.Capture.EventHandler
     {
-        private Button btnEstadoDB;
-        private Button btnEstadoLector;
+        private Button btnRegistrarEmpleados, btnRegistrarAsistencia, btnVerReportes;
+        private Button btnEstadoDB, btnEstadoLector;
         private DPFP.Capture.Capture Capturer;
 
         public MenuPrincipalForm()
@@ -24,13 +23,25 @@ namespace Huella
         private void InitializeComponent2()
         {
             this.Text = "Menú Principal";
-            this.Size = new System.Drawing.Size(400, 250);
+            this.Size = new System.Drawing.Size(400, 300);
 
-            btnEstadoDB = new Button { Text = "Base de Datos", Left = 50, Top = 50, Width = 120, Height = 50 };
-            btnEstadoLector = new Button { Text = "Lector Biométrico", Left = 200, Top = 50, Width = 120, Height = 50 };
+            btnEstadoDB = new Button { Text = "Base de Datos", Left = 50, Top = 30, Width = 120, Height = 40 };
+            btnEstadoLector = new Button { Text = "Lector Biométrico", Left = 200, Top = 30, Width = 120, Height = 40 };
+
+            btnRegistrarEmpleados = new Button { Text = "Registrar Empleados", Left = 50, Top = 90, Width = 270, Height = 40 };
+            btnRegistrarEmpleados.Click += (sender, e) => new RegistroEmpleadosForm().ShowDialog();
+
+            btnRegistrarAsistencia = new Button { Text = "Registrar Asistencia", Left = 50, Top = 140, Width = 270, Height = 40 };
+            btnRegistrarAsistencia.Click += (sender, e) => new ModuloAsistenciaForm().ShowDialog();
+
+            btnVerReportes = new Button { Text = "Ver Reportes", Left = 50, Top = 190, Width = 270, Height = 40 };
+            btnVerReportes.Click += (sender, e) => new ModuloReportesForm().ShowDialog();
 
             this.Controls.Add(btnEstadoDB);
             this.Controls.Add(btnEstadoLector);
+            this.Controls.Add(btnRegistrarEmpleados);
+            this.Controls.Add(btnRegistrarAsistencia);
+            this.Controls.Add(btnVerReportes);
         }
 
         private void VerificarConexionDB()
@@ -53,7 +64,7 @@ namespace Huella
         {
             try
             {
-                Capturer = new DPFP.Capture.Capture();
+                Capturer = new Capture();
                 Capturer.EventHandler = this;
                 Capturer.StartCapture();
                 btnEstadoLector.BackColor = System.Drawing.Color.Green;
@@ -64,11 +75,25 @@ namespace Huella
             }
         }
 
+        public void OnReaderConnect(object Capture, string ReaderSerialNumber)
+        {
+            this.Invoke((MethodInvoker)delegate
+            {
+                btnEstadoLector.BackColor = System.Drawing.Color.Green;
+            });
+        }
+
+        public void OnReaderDisconnect(object Capture, string ReaderSerialNumber)
+        {
+            this.Invoke((MethodInvoker)delegate
+            {
+                btnEstadoLector.BackColor = System.Drawing.Color.Red;
+            });
+        }
+
         public void OnComplete(object Capture, string ReaderSerialNumber, DPFP.Sample Sample) { }
         public void OnFingerGone(object Capture, string ReaderSerialNumber) { }
         public void OnFingerTouch(object Capture, string ReaderSerialNumber) { }
-        public void OnReaderConnect(object Capture, string ReaderSerialNumber) { }
-        public void OnReaderDisconnect(object Capture, string ReaderSerialNumber) { }
         public void OnSampleQuality(object Capture, string ReaderSerialNumber, DPFP.Capture.CaptureFeedback CaptureFeedback) { }
     }
 }

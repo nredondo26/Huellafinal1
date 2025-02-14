@@ -1,6 +1,10 @@
-﻿using MySql.Data.MySqlClient;
+﻿using System;
+using System.IO;
+using System.Windows.Forms;
+using MySql.Data.MySqlClient;
+using DPFP;
 using DPFP.Capture;
-
+using DPFP.Verification;
 
 namespace Huella
 {
@@ -9,6 +13,7 @@ namespace Huella
         private Label lblStatus;
         private Button btnVerificar;
         private DPFP.Capture.Capture Capturer;
+        private DPFP.Verification.Verification Verifier;
 
         public ModuloAsistenciaForm()
         {
@@ -16,6 +21,7 @@ namespace Huella
             InitializeComponent2();
             Capturer = new DPFP.Capture.Capture();
             Capturer.EventHandler = this;
+            Verifier = new DPFP.Verification.Verification();
         }
 
         private void InitializeComponent2()
@@ -30,13 +36,19 @@ namespace Huella
 
         private void BtnVerificar_Click(object sender, EventArgs e)
         {
-            Capturer.StartCapture();
-            lblStatus.Text = "Escaneando huella...";
+            try
+            {
+                Capturer.StartCapture();
+                this.Invoke((MethodInvoker)(() => lblStatus.Text = "Escaneando huella..."));
+            }
+            catch
+            {
+                MessageBox.Show("Error al iniciar la captura.");
+            }
         }
 
         public void OnComplete(object Capture, string ReaderSerialNumber, DPFP.Sample Sample)
         {
-            // Convertir la muestra a un template
             DPFP.Processing.FeatureExtraction extractor = new DPFP.Processing.FeatureExtraction();
             DPFP.FeatureSet features = new DPFP.FeatureSet();
             DPFP.Capture.CaptureFeedback feedback = DPFP.Capture.CaptureFeedback.None;
@@ -44,24 +56,112 @@ namespace Huella
 
             if (feedback == DPFP.Capture.CaptureFeedback.Good)
             {
-                using (MySqlConnection conn = new DatabaseConnection().GetConnection())
-                {
-                    conn.Open();
-                    string query = "SELECT nombre FROM empleados WHERE huella=@huella";
-                    MySqlCommand cmd = new MySqlCommand(query, conn);
-                    cmd.Parameters.AddWithValue("@huella", features.Bytes);
+                this.Invoke((MethodInvoker)(() => IdentificarEmpleado(features)));
+            }
+            else
+            {
+                this.Invoke((MethodInvoker)(() => MessageBox.Show("Huella no válida. Intente nuevamente.")));
+            }
+        }
 
-                    object result = cmd.ExecuteScalar();
-                    if (result != null)
+        private void IdentificarEmpleado(DPFP.FeatureSet features)
+        {
+            using (MySqlConnection conn = new DatabaseConnection().GetConnection())
+            {
+                conn.Open();
+                string query = "SELECT id, nombre, apellido, huella FROM empleados";
+                MySqlCommand cmd = new MySqlCommand(query, conn);
+                MySqlDataReader reader = cmd.ExecuteReader();
+
+                while (reader.Read())
+                {
+                    byte[] huellaData = (byte[])reader["huella"];
+                    DPFP.Template template = new DPFP.Template(new MemoryStream(huellaData));
+
+                    DPFP.Verification.Verification.Result result = new DPFP.Verification.Verification.Result();
+                    Verifier.Verify(features, template, ref result);
+
+                    if (result.Verified)
                     {
-                        string nombre = result.ToString();
-                        MessageBox.Show("Bienvenido, " + nombre);
-                    }
-                    else
-                    {
-                        MessageBox.Show("Huella no reconocida");
+                        int empleadoId = Convert.ToInt32(reader["id"]);
+                        string nombre = reader["nombre"].ToString();
+                        string apellido = reader["apellido"].ToString();
+
+                        RegistrarAsistencia(empleadoId);
+
+                        DialogResult respuesta = MessageBox.Show(
+                            $"Bienvenido {nombre} {apellido}. Asistencia registrada.\n\n¿Desea verificar otro empleado?",
+                            "Asistencia Registrada",
+                            MessageBoxButtons.YesNo,
+                            MessageBoxIcon.Question
+                        );
+
+                        if (respuesta == DialogResult.Yes)
+                        {
+                            ReiniciarProceso();
+                            BtnVerificar_Click(null, EventArgs.Empty); // ✅ Llamar automáticamente al botón
+                        }
+                        else
+                        {
+                            this.Close(); // Volver al menú principal
+                        }
+
+                        return;
                     }
                 }
+
+                MessageBox.Show("Huella no reconocida.");
+                ReiniciarProceso();
+                BtnVerificar_Click(null, EventArgs.Empty); // ✅ Llamar automáticamente al botón si la huella no es reconocida
+            }
+        }
+
+
+        private void RegistrarAsistencia(int empleadoId)
+        {
+            using (MySqlConnection conn = new DatabaseConnection().GetConnection())
+            {
+                conn.Open();
+
+                string tipoRegistro = DeterminarTipoRegistro(empleadoId);
+                string query = "INSERT INTO asistencia (empleado_id, tipo) VALUES (@empleado_id, @tipo)";
+                MySqlCommand cmd = new MySqlCommand(query, conn);
+                cmd.Parameters.AddWithValue("@empleado_id", empleadoId);
+                cmd.Parameters.AddWithValue("@tipo", tipoRegistro);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        private string DeterminarTipoRegistro(int empleadoId)
+        {
+            using (MySqlConnection conn = new DatabaseConnection().GetConnection())
+            {
+                conn.Open();
+
+                string query = "SELECT tipo FROM asistencia WHERE empleado_id = @empleado_id ORDER BY fecha DESC LIMIT 1";
+                MySqlCommand cmd = new MySqlCommand(query, conn);
+                cmd.Parameters.AddWithValue("@empleado_id", empleadoId);
+                object result = cmd.ExecuteScalar();
+
+                return (result != null && result.ToString() == "entrada") ? "salida" : "entrada";
+            }
+        }
+
+        private void ReiniciarProceso()
+        {
+            try
+            {
+                Capturer.StopCapture();
+                Capturer.EventHandler = null;
+                Capturer = new DPFP.Capture.Capture();
+                Capturer.EventHandler = this;
+                Capturer.StartCapture();
+
+                this.Invoke((MethodInvoker)(() => lblStatus.Text = "Coloque su huella"));
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Error al reiniciar el lector: " + ex.Message);
             }
         }
 
