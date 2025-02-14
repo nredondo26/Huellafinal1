@@ -10,10 +10,10 @@ namespace Huella
         {
             
             ApplicationConfiguration.Initialize();
-            Application.Run(new LoginForm());
-            //Application.Run(new RegistroEmpleadosForm());
-             //Application.Run(new MenuPrincipalForm());
-            //Application.Run(new ModuloAsistenciaForm());
+            //Application.Run(new LoginForm());
+           // Application.Run(new RegistroEmpleadosForm());
+             Application.Run(new MenuPrincipalForm());
+           // Application.Run(new ModuloAsistenciaForm());
             //Application.Run(new ModuloReportesForm());
         }
     }

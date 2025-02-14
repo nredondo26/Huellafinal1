@@ -36,6 +36,7 @@
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(501, 450);
             Name = "ModuloAsistenciaForm";
+            StartPosition = FormStartPosition.CenterScreen;
             Text = "ModuloAsistenciaForm";
             ResumeLayout(false);
         }

@@ -1,10 +1,6 @@
-﻿using System;
-using System.Threading.Tasks;
-using System.Windows.Forms;
+﻿
 using MySql.Data.MySqlClient;
-using DPFP;
-using DPFP.Capture;
-using System.IO;
+
 
 namespace Huella
 {
@@ -52,6 +48,18 @@ namespace Huella
             this.Controls.Add(progressBar);
             this.Controls.Add(lblProgreso);
             this.Controls.Add(btnRegistrar);
+        }
+
+        protected override void OnLoad(EventArgs e)
+        {
+            base.OnLoad(e);
+            ReiniciarLector(); // ✅ Ahora el lector se reinicia correctamente al abrir el formulario
+        }
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            base.OnFormClosing(e);
+            DetenerYLiberarLector(); // ✅ Liberamos el lector antes de cerrar el formulario
         }
 
         private bool huellaCapturada = false; // ✅ Variable para evitar reinicio de captura
@@ -117,23 +125,6 @@ namespace Huella
                 });
             }
         }
-
-
-        private async void MostrarMensajeTemporal(string mensaje)
-        {
-            await Task.Run(() =>
-            {
-                MessageBox.Show(mensaje);
-                Task.Delay(2000).Wait(); // Espera 2 segundos antes de cerrar
-                SendKeys.SendWait("{ENTER}"); // Cierra el MessageBox automáticamente
-            });
-        }
-
-        public void OnFingerGone(object Capture, string ReaderSerialNumber) { }
-        public void OnFingerTouch(object Capture, string ReaderSerialNumber) { }
-        public void OnReaderConnect(object Capture, string ReaderSerialNumber) { }
-        public void OnReaderDisconnect(object Capture, string ReaderSerialNumber) { }
-        public void OnSampleQuality(object Capture, string ReaderSerialNumber, DPFP.Capture.CaptureFeedback CaptureFeedback) { }
 
         private void BtnRegistrar_Click(object sender, EventArgs e)
         {
@@ -201,7 +192,6 @@ namespace Huella
             }
         }
 
-
         private void LimpiarCampos()
         {
             txtCedula.Text = "";
@@ -224,19 +214,45 @@ namespace Huella
                 {
                     Capturer.StopCapture();
                     Capturer.EventHandler = null;
-                    Capturer = new DPFP.Capture.Capture();
-                    Capturer.EventHandler = this;
-                    Capturer.StartCapture();
-                    MessageBox.Show("Lector de huellas listo para un nuevo registro.");
+                    Capturer = null;
+                    Thread.Sleep(500); // 🔴 Esperamos un momento para liberar recursos
+                }
+
+                Capturer = new DPFP.Capture.Capture();
+                Capturer.EventHandler = this;
+                Capturer.StartCapture(); // ✅ Iniciamos el lector correctamente
+
+                MessageBox.Show("Lector de huellas listo para un nuevo registro.");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Error al reiniciar el lector: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void DetenerYLiberarLector()
+        {
+            try
+            {
+                if (Capturer != null)
+                {
+                    Capturer.StopCapture();
+                    Capturer.EventHandler = null;
+                    Capturer = null;
+                    Thread.Sleep(500); // ✅ Pequeña pausa para liberar completamente el lector
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Error al reiniciar el lector: " + ex.Message);
+                MessageBox.Show("Error al detener el lector: " + ex.Message);
             }
         }
 
-
+        public void OnFingerGone(object Capture, string ReaderSerialNumber) { }
+        public void OnFingerTouch(object Capture, string ReaderSerialNumber) { }
+        public void OnReaderConnect(object Capture, string ReaderSerialNumber) { }
+        public void OnReaderDisconnect(object Capture, string ReaderSerialNumber) { }
+        public void OnSampleQuality(object Capture, string ReaderSerialNumber, DPFP.Capture.CaptureFeedback CaptureFeedback) { }
 
     }
 }

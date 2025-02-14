@@ -1,10 +1,6 @@
-﻿using System;
-using System.IO;
-using System.Windows.Forms;
-using MySql.Data.MySqlClient;
-using DPFP;
+﻿using MySql.Data.MySqlClient;
 using DPFP.Capture;
-using DPFP.Verification;
+
 
 namespace Huella
 {
@@ -12,14 +8,14 @@ namespace Huella
     {
         private Label lblStatus;
         private Button btnVerificar;
-        private DPFP.Capture.Capture Capturer;
+        private Capture Capturer;
         private DPFP.Verification.Verification Verifier;
 
         public ModuloAsistenciaForm()
         {
             InitializeComponent();
             InitializeComponent2();
-            Capturer = new DPFP.Capture.Capture();
+            Capturer = new Capture();
             Capturer.EventHandler = this;
             Verifier = new DPFP.Verification.Verification();
         }
@@ -32,6 +28,29 @@ namespace Huella
 
             this.Controls.Add(lblStatus);
             this.Controls.Add(btnVerificar);
+        }
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            base.OnFormClosing(e);
+            DetenerYLiberarLector(); // ✅ Liberamos el lector antes de cerrar el formulario
+        }
+        private void DetenerYLiberarLector()
+        {
+            try
+            {
+                if (Capturer != null)
+                {
+                    Capturer.StopCapture();
+                    Capturer.EventHandler = null;
+                    Capturer = null;
+                    Thread.Sleep(500); // ✅ Pequeña pausa para liberar completamente el lector
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Error al detener el lector: " + ex.Message);
+            }
         }
 
         private void BtnVerificar_Click(object sender, EventArgs e)
@@ -51,10 +70,10 @@ namespace Huella
         {
             DPFP.Processing.FeatureExtraction extractor = new DPFP.Processing.FeatureExtraction();
             DPFP.FeatureSet features = new DPFP.FeatureSet();
-            DPFP.Capture.CaptureFeedback feedback = DPFP.Capture.CaptureFeedback.None;
+            CaptureFeedback feedback = CaptureFeedback.None;
             extractor.CreateFeatureSet(Sample, DPFP.Processing.DataPurpose.Verification, ref feedback, ref features);
 
-            if (feedback == DPFP.Capture.CaptureFeedback.Good)
+            if (feedback == CaptureFeedback.Good)
             {
                 this.Invoke((MethodInvoker)(() => IdentificarEmpleado(features)));
             }
@@ -153,7 +172,7 @@ namespace Huella
             {
                 Capturer.StopCapture();
                 Capturer.EventHandler = null;
-                Capturer = new DPFP.Capture.Capture();
+                Capturer = new Capture();
                 Capturer.EventHandler = this;
                 Capturer.StartCapture();
 
@@ -170,5 +189,6 @@ namespace Huella
         public void OnReaderConnect(object Capture, string ReaderSerialNumber) { }
         public void OnReaderDisconnect(object Capture, string ReaderSerialNumber) { }
         public void OnSampleQuality(object Capture, string ReaderSerialNumber, DPFP.Capture.CaptureFeedback CaptureFeedback) { }
+
     }
 }
